@@ -1,5 +1,6 @@
 use bevy::{
-    pbr::{ExtendedMaterial, MaterialExtension},
+    core_pipeline::prepass::{DepthPrepass, NormalPrepass},
+    pbr::{ExtendedMaterial, MaterialExtension, ScreenSpaceAmbientOcclusion},
     platform::collections::{hash_map::Entry, HashMap},
     prelude::*,
     render::{
@@ -8,7 +9,10 @@ use bevy::{
     },
 };
 use boimp::bake::{ImposterBakeMaterialExtension, ImposterBakeMaterialPlugin};
-use common::{structs::PreviewMode, util::InvertedScaleExt};
+use common::{
+    structs::{AppConfig, PreviewMode, PrimaryCamera, SsaoSetting},
+    util::InvertedScaleExt,
+};
 
 pub type SceneMaterial = ExtendedMaterial<SceneBound>;
 
@@ -318,6 +322,45 @@ impl Plugin for SceneBoundPlugin {
 
         app.add_observer(update_show_outside_bounds);
         app.add_observer(scene_material_removed);
+
+        app.add_systems(Update, manage_primary_camera_prepasses);
+    }
+}
+
+/// the primary camera's depth/normal prepasses are only consumed by the OUTLINE
+/// shader path (avatar/hover edges) and SSAO; drop them while neither exists.
+/// outline gains them a frame late (imperceptible edge tint); SSAO's #[require]
+/// re-adds them atomically. texture cameras keep their always-on prepasses.
+fn manage_primary_camera_prepasses(
+    mut commands: Commands,
+    config: Res<AppConfig>,
+    camera: Query<
+        (Entity, Has<DepthPrepass>, Has<ScreenSpaceAmbientOcclusion>),
+        With<PrimaryCamera>,
+    >,
+    mesh_tags: Query<&MeshTag, With<MeshMaterial3d<SceneMaterial>>>,
+) {
+    // outline state lives on mesh tags (set by the material-key pipeline); a
+    // prepass is only consumed while at least one outlined mesh exists.
+    let any_outline = mesh_tags
+        .iter()
+        .any(|tag| tag.0 & SCENE_MATERIAL_OUTLINE_MESH_TAGS != 0);
+
+    for (cam, has_prepass, has_ssao) in camera.iter() {
+        let needed = config.graphics.ssao != SsaoSetting::Off || has_ssao || any_outline;
+        if needed == has_prepass {
+            continue;
+        }
+        let Ok(mut cmds) = commands.get_entity(cam) else {
+            continue;
+        };
+        if needed {
+            debug!("enabling primary camera prepasses");
+            cmds.try_insert((DepthPrepass, NormalPrepass));
+        } else {
+            debug!("disabling primary camera prepasses");
+            cmds.remove::<(DepthPrepass, NormalPrepass)>();
+        }
     }
 }
 
