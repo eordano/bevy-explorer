@@ -179,6 +179,8 @@ impl DecentralandApp {
         #[cfg(target_arch = "wasm32")]
         app.add_plugins(wasm_default_plugins(&decentraland_app_config));
 
+        app.add_plugins(SingleThreadedAuxSchedules);
+
         let version_hash = version();
         let version = format!("{VERSION} ({version_hash})");
 
@@ -644,4 +646,31 @@ pub fn version() -> String {
 
     #[cfg(debug_assertions)]
     "debug".to_string()
+}
+
+// small fixed-cost schedules: multithreaded dispatch costs more than the systems
+struct SingleThreadedAuxSchedules;
+
+impl Plugin for SingleThreadedAuxSchedules {
+    fn build(&self, app: &mut App) {
+        fn single_threaded(s: &mut bevy::ecs::schedule::Schedule) {
+            s.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
+        }
+        app.edit_schedule(First, single_threaded);
+        app.edit_schedule(PreUpdate, single_threaded);
+        app.edit_schedule(PostUpdate, single_threaded);
+        app.edit_schedule(Last, single_threaded);
+    }
+
+    // the render sub-app only exists once rendering is initialized
+    fn finish(&self, app: &mut App) {
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            let mut schedules = render_app
+                .world_mut()
+                .resource_mut::<bevy::ecs::schedule::Schedules>();
+            if let Some(s) = schedules.get_mut(bevy::render::Render) {
+                s.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
+            }
+        }
+    }
 }
