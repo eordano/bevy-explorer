@@ -102,6 +102,14 @@ impl SceneUpdates {
     pub fn receiver(&mut self) -> &mut SceneResponseReceiver {
         &mut self.receiver
     }
+
+    fn responses_pending(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        return !self.receiver.is_empty();
+        // std mpsc can't peek; keep running the schedule to poll on wasm
+        #[cfg(target_arch = "wasm32")]
+        return true;
+    }
 }
 
 #[derive(Component)]
@@ -295,6 +303,9 @@ impl Plugin for SceneRunnerPlugin {
 
         let mut scene_schedule = Schedule::new(SceneLoopLabel);
 
+        // many tiny systems, rerun several times per frame: dispatch overhead dominates, run inline
+        scene_schedule.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
+
         scene_schedule.configure_sets(
             (
                 SceneLoopSets::SendToScene,
@@ -387,6 +398,16 @@ fn run_scene_loop(world: &mut World) {
             && (world.resource::<SceneUpdates>().eligible_jobs > 0
                 || !world.resource::<SceneUpdates>().jobs_in_flight.is_empty()))
     {
+        // nothing to dispatch and nothing received: poll the channel instead of re-running the schedule
+        let updates = world.resource::<SceneUpdates>();
+        if run_once && updates.eligible_jobs == 0 && !updates.responses_pending() {
+            while Instant::now() < target_end_time
+                && !world.resource::<SceneUpdates>().responses_pending()
+            {
+                std::hint::spin_loop();
+            }
+            continue;
+        }
         schedule.run(world);
         run_once = true;
     }
