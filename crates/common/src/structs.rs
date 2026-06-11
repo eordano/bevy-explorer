@@ -566,7 +566,7 @@ impl Default for GraphicsSettings {
     fn default() -> Self {
         Self {
             vsync: false,
-            log_fps: true,
+            log_fps: false,
             msaa: AaSetting::FxaaHigh,
             fps_target: 60,
             shadow_distance: 200.0,

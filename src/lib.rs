@@ -461,7 +461,7 @@ fn setup(
             },
             default_camera_components(),
             Projection::from(PerspectiveProjection {
-                far: 100000.0,
+                far: 4000.0,
                 ..Default::default()
             }),
             PrimaryCamera::default(),

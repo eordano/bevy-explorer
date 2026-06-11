@@ -55,7 +55,7 @@ impl Plugin for VisualsPlugin {
             .add_systems(Startup, setup.in_set(SetupSets::Main));
 
         app.insert_resource(AtmosphereSettings {
-            resolution: 1024,
+            resolution: 512,
             dithering: true,
             skybox_creation_mode:
                 bevy_atmosphere::settings::SkyboxCreationMode::FromProjectionFarWithFallback(
