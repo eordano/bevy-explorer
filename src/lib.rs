@@ -555,7 +555,7 @@ fn desktop_default_plugins(decentraland_app_config: &DecentralandAppConfig) -> P
                 },
                 compute: TaskPoolThreadAssignmentPolicy {
                     min_threads: 2,
-                    max_threads: 8,
+                    max_threads: 4,
                     percent: 0.25,
                     on_thread_spawn: None,
                     on_thread_destroy: None,
