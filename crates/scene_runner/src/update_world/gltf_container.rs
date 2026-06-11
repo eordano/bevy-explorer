@@ -15,7 +15,8 @@ use bevy::{
     platform::collections::{HashMap, HashSet},
     prelude::*,
     render::{
-        mesh::{skinning::SkinnedMesh, Indices, VertexAttributeValues},
+        mesh::{skinning::SkinnedMesh, Indices, MeshAabb, VertexAttributeValues},
+        primitives::Aabb,
         render_asset::RenderAssetUsages,
         view::NoFrustumCulling,
     },
@@ -348,6 +349,23 @@ pub struct CachedMeshData {
     pub is_skinned: bool,
     pub shape: SharedShape,
     pub maybe_collider: Option<Handle<Mesh>>,
+    // conservative culling aabb for skinned meshes
+    pub skin_aabb: Option<Aabb>,
+}
+
+// rest-pose bounds inflated enough to cover any humanoid animation
+const SKINNED_AABB_INFLATION: f32 = 2.5;
+
+fn inflate_skinned_aabb(aabb: Aabb) -> Aabb {
+    let half_extents = aabb.half_extents * SKINNED_AABB_INFLATION;
+    // for near-flat meshes (cloth planes, capes) the rest-pose extent along one
+    // axis can be ~zero while animation bends the mesh well out of plane, so
+    // enforce a minimum extent relative to the largest dimension.
+    let min_extent = half_extents.max_element() * 0.5;
+    Aabb {
+        center: aabb.center,
+        half_extents: half_extents.max(Vec3A::splat(min_extent)),
+    }
 }
 
 #[derive(Component, Default)]
@@ -671,6 +689,12 @@ fn update_ready_gltfs(
                             }
                         }
 
+                        let skin_aabb = if is_skinned {
+                            mesh_data.compute_aabb().map(inflate_skinned_aabb)
+                        } else {
+                            None
+                        };
+
                         let shape = mesh_to_parry_shape(mesh_data);
 
                         let maybe_collider = if is_skinned {
@@ -710,6 +734,7 @@ fn update_ready_gltfs(
                             is_skinned,
                             shape,
                             maybe_collider,
+                            skin_aabb,
                         };
 
                         if let Some(hash) = maybe_hash {
@@ -723,8 +748,13 @@ fn update_ready_gltfs(
                     *tracker.0.entry("Total Meshes").or_default() += 1;
 
                     if data.is_skinned {
-                        // bevy doesn't calculate culling correctly for skinned entities
-                        commands.entity(spawned_ent).try_insert(NoFrustumCulling);
+                        // animation moves vertices outside the rest-pose aabb; use an
+                        // inflated bound rather than disabling culling entirely
+                        if let Some(aabb) = data.skin_aabb {
+                            commands.entity(spawned_ent).try_insert(aabb);
+                        } else {
+                            commands.entity(spawned_ent).try_insert(NoFrustumCulling);
+                        }
                     } else if maybe_skin.is_some() {
                         // remove skin data if mesh doesn't have all required data
                         commands.entity(spawned_ent).remove::<SkinnedMesh>();
