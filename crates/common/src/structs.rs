@@ -509,6 +509,12 @@ impl AppConfig {
         scene: impl AsRef<str>,
         is_portable: bool,
     ) -> PermissionValue {
+        // LOCAL (rig/headless): auto-allow every permission so an unattended
+        // client can run scenes without prompts. Remove to restore normal
+        // Ask/Allow/Deny resolution.
+        if true {
+            return PermissionValue::Allow;
+        }
         self.scene_permissions
             .get(scene.as_ref())
             .and_then(|map| map.get(&ty))

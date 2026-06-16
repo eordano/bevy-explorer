@@ -75,6 +75,18 @@ fn login(
     native_active: Res<NativeUi>,
     config: Res<AppConfig>,
 ) {
+    // LOCAL (rig/headless): auto-enter as guest, bypassing both the native login
+    // UI and the SDK login scene, so an unattended client can reach the world.
+    // Runs before the native_active.login guard because the default ui_scene
+    // sets native login off and the login UI is scene-driven.
+    if wallet.address().is_none() {
+        if !*motd_shown {
+            *motd_shown = true;
+            bridge.write(SystemApi::LoginGuest);
+        }
+        return;
+    }
+
     if !native_active.login {
         return;
     }
