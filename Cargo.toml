@@ -100,7 +100,6 @@ bevy = { version = "0.16.1", default-features = false, features = [
   "bevy_sprite",
   "bevy_text",
   "bevy_ui",
-  "multi_threaded",
   "png",
   "tiff",
   "jpeg",
@@ -198,6 +197,7 @@ serde_bytes = "0.11"
 web-sys = { version = "0.3", features = [
   "Performance",
   "Window",
+  "Location",
   "Document",
   "Element",
   "HtmlCanvasElement",
@@ -275,6 +275,12 @@ bevy_simple_text_input = { workspace = true }
 
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# multi_threaded is native-only: on wasm Bevy's task pools are already
+# single-threaded (cfg-gated), so the feature only selects the MultiThreaded
+# executor — which runs every system through dependency-graph + atomic-sync
+# machinery for ZERO parallelism on wasm's one thread (pure per-frame overhead,
+# a prime suspect for the 0.19 orbit_cpu regression). Native keeps it.
+bevy = { workspace = true, features = ["multi_threaded"] }
 dcl_deno = { workspace = true }
 dcl_deno_ipc = { workspace = true }
 mimalloc = { version = "*", default-features = false }
@@ -294,6 +300,7 @@ wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 once_cell = { workspace = true }
 web-fs = { workspace = true }
+web-sys = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.11.8"

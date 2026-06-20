@@ -332,14 +332,33 @@ fn decentraland_app_config(
 }
 
 fn decentraland_serialized_app_config() -> AppConfig {
-    INIT_DATA.get().cloned().unwrap_or_else(|| AppConfig {
+    let mut config = INIT_DATA.get().cloned().unwrap_or_else(|| AppConfig {
         graphics: common::structs::GraphicsSettings {
             shadow_distance: 20.0,
             shadow_settings: common::structs::ShadowSetting::Low,
             ..Default::default()
         },
         ..Default::default()
-    })
+    });
+    // Optional `gfx=safe|aggressive|maxlean` URL param selects a graphics quality
+    // profile at boot. Lets us A/B fidelity tiers from a single build (the reactive
+    // AppSetting apply systems push these onto the camera on NewCameraEvent).
+    if let Some(profile) = gfx_profile_from_url() {
+        info!("graphics quality profile: {profile:?}");
+        profile.apply(&mut config.graphics);
+    }
+    config
+}
+
+/// Parse the `gfx=` query param from the page URL into a [`GraphicsQualityProfile`].
+fn gfx_profile_from_url() -> Option<common::structs::GraphicsQualityProfile> {
+    let search = web_sys::window()?.location().search().ok()?;
+    search
+        .trim_start_matches('?')
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(k, _)| *k == "gfx")
+        .and_then(|(_, v)| common::structs::GraphicsQualityProfile::parse(v))
 }
 
 fn decentraland_app_arguments(

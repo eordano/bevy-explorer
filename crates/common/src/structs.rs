@@ -592,6 +592,62 @@ impl Default for GraphicsSettings {
     }
 }
 
+/// Selectable graphics quality profile. Presets the fidelity-cost knobs in
+/// [`GraphicsSettings`] so the fidelity<->perf tradeoff is one switch (and is
+/// measurable: each tier can be A/B'd against the others). `Full` is the honest
+/// shipping baseline (no fidelity cut). The leaner tiers trade visible quality
+/// for GPU time. On wasm the active profile is selected from the `gfx=` URL query
+/// param at boot (see `web::decentraland_serialized_app_config`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum GraphicsQualityProfile {
+    /// Current shipping fidelity. The reference point — no features cut.
+    #[default]
+    Full,
+    /// Barely-perceptible lean: drop bloom (shadows are already Low/Hardware2x2 on web).
+    Safe,
+    /// Noticeable lean: also drop depth-of-field, FXAA Low, shorter shadow distance.
+    Aggressive,
+    /// Leanest: also shadows off and FXAA off.
+    MaxLean,
+}
+
+impl GraphicsQualityProfile {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "full" | "high" => Some(Self::Full),
+            "safe" => Some(Self::Safe),
+            "aggressive" | "agg" => Some(Self::Aggressive),
+            "maxlean" | "max" | "lean" => Some(Self::MaxLean),
+            _ => None,
+        }
+    }
+
+    /// Apply this profile's presets onto `g`, mutating only the fidelity knobs and
+    /// leaving everything else (vsync, fps target, distances we don't touch, etc.)
+    /// as configured. `Full` is a no-op.
+    pub fn apply(&self, g: &mut GraphicsSettings) {
+        match self {
+            Self::Full => {}
+            Self::Safe => {
+                g.bloom = BloomSetting::Off;
+            }
+            Self::Aggressive => {
+                g.bloom = BloomSetting::Off;
+                g.dof = DofSetting::Off;
+                g.msaa = AaSetting::FxaaLow;
+                g.shadow_distance = g.shadow_distance.min(15.0);
+            }
+            Self::MaxLean => {
+                g.bloom = BloomSetting::Off;
+                g.dof = DofSetting::Off;
+                g.msaa = AaSetting::Off;
+                g.shadow_settings = ShadowSetting::Off;
+                g.shadow_distance = g.shadow_distance.min(10.0);
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum AudioType {
     Voice,
